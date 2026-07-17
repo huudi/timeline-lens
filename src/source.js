@@ -790,12 +790,54 @@ export async function findAnimateSource(node) {
 // text, including the common `list.forEach((item) =>
 // item.addEventListener('click', ...))` shape used to wire up a whole
 // NodeList/array at once (e.g. nav dots).
+//
+// Not every click-driven animation is wired this directly, though: plenty of
+// UI libraries (sliders/carousels/menus) take a DOM element as a config value
+// and wire up its click handling internally, out of static-scan reach
+// entirely (e.g. Swiper's `new Swiper(el, { navigation: { prevEl, nextEl },
+// pagination: { el } })`). PROP_VALUE_RE below catches that shape too, as a
+// separate, weaker-confidence `weak` tier (see clickTriggerSelectors) since
+// it can only tell "this element was handed to something as a config value",
+// not "and that something specifically binds it to a click".
 
 const ID_DECL_RE = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*document\s*\.\s*getElementById\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
+// Receiver is any identifier (`document`, a scoped root element, a component
+// ref, ...), not just literal `document` — a scoped `carouselRoot.querySelector(...)`
+// off a previously-found element is at least as common as querying from
+// `document` directly, and declaredSelectors below needs to recognize both
+// to have any DOM-element variables to work with in the first place.
+//
+// `querySelector(?:All)?` — NOT the pre-existing `querySelectorAll?` shape
+// this replaces, which only ever matched the literal "querySelectorAl" or
+// "querySelectorAll" (the `?` applied to just the trailing "l" of "All", not
+// to "All" as a whole), so plain singular `.querySelector(...)` calls never
+// matched at all; confirmed empirically against this project's own
+// `carouselRoot.querySelector(...)` calls, all singular, all previously
+// invisible to declaredSelectors.
 const QUERY_DECL_RE =
-  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:Array\.from\(\s*)?document\s*\.\s*querySelectorAll?\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:Array\.from\(\s*)?[A-Za-z_$][\w$]*\s*\.\s*querySelector(?:All)?\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
 const CLICK_LISTENER_RE = /\b([A-Za-z_$][\w$]*)\s*\.\s*addEventListener\(\s*["'`]click["'`]/g;
 const FOREACH_RE = /\b([A-Za-z_$][\w$]*)\s*\.\s*forEach\(\s*\(?\s*([A-Za-z_$][\w$]*)/g;
+
+// A declared-selector variable appearing as a property VALUE inside an
+// object-literal argument (`{ prevEl: prevBtn, ... }`) — the shape a
+// library's own options object uses to accept an element it'll wire click
+// handling onto internally (Swiper's `navigation: { prevEl, nextEl }` and
+// `pagination: { el }`, and the equivalent shape in plenty of other slider/
+// carousel/menu libraries). There's no addEventListener('click', ...) call
+// in the host's own code for these to find — the library does that
+// internally, out of static-scan reach — so this is a deliberately weaker,
+// key-agnostic signal: it doesn't know *what* the library does with the
+// element, only that a known DOM-element variable was handed to some call as
+// a config value. Kept separate from CLICK_LISTENER_RE's exact matches (see
+// the strong/weak split in clickTriggerSelectors below), since "referenced
+// in a config object" is real evidence of wiring, not proof it's
+// specifically a click handler. Shorthand properties (`{ prevEl }`, where the
+// key and variable name are identical) aren't matched — deliberately: without
+// a colon there's nothing to distinguish a config value from any other bare
+// identifier reference, and that would make this far too easy to trip on
+// unrelated code.
+const PROP_VALUE_RE = /\b[A-Za-z_$][\w$]*\s*:\s*([A-Za-z_$][\w$]*)\s*[,}]/g;
 
 // varName -> readable selector, from its own `document.getElementById(...)`
 // or `document.querySelector(All)(...)` declaration earlier in the text.
@@ -822,15 +864,32 @@ function forEachLoopVars(text) {
 }
 
 // Readable selectors (e.g. `#slide-next`, `.slide-dot (each)`) for every
-// element wired up with a click listener in `text`, deduped. A listener
-// bound inside a `.forEach()` callback is resolved back to the collection's
-// own selector, suffixed `(each)` since it's every item in that collection,
-// not one specific element.
+// element wired up with a click listener in `text`, split into two
+// confidence tiers, each deduped independently (a selector found both ways
+// only appears once, under `strong`): `strong` from an exact
+// `el.addEventListener('click', ...)` match (a listener bound inside a
+// `.forEach()` callback is resolved back to the collection's own selector,
+// suffixed `(each)` since it's every item in that collection, not one
+// specific element); `weak` from a declared-selector variable merely handed
+// to some call as an object-literal property value (see PROP_VALUE_RE above)
+// — real evidence something wired the element up, just not proof it's
+// specifically a click handler the way `strong` is.
+//
+// Deliberately does NOT attempt to match JSX's `onClick={...}` shape: a
+// bundler-served React/Next component never actually serves the raw JSX
+// text this file's regex scan would need — Vite, webpack, and every other
+// real toolchain compile `<button onClick={fn}>` to a call like
+// `jsxDEV("button", { onClick: fn, ... })` (confirmed empirically against
+// this project's own apps/react-test-site under Vite dev) before the
+// browser ever fetches it, so a raw-JSX-syntax regex here would silently
+// match nothing in practice, in every real setup, forever — see
+// react-props.js for how React's own click wiring is detected instead (a
+// live DOM/Fiber read, not a source-text guess).
 export function clickTriggerSelectors(text) {
-  if (!text) return [];
+  if (!text) return { strong: [], weak: [] };
   const selectors = declaredSelectors(text);
   const loopVars = forEachLoopVars(text);
-  const found = new Set();
+  const strong = new Set();
   let m;
   CLICK_LISTENER_RE.lastIndex = 0;
   while ((m = CLICK_LISTENER_RE.exec(text))) {
@@ -841,16 +900,25 @@ export function clickTriggerSelectors(text) {
       each = true;
     }
     const sel = selectors.get(name);
-    if (sel) found.add(each ? `${sel} (each)` : sel);
+    if (sel) strong.add(each ? `${sel} (each)` : sel);
   }
-  return [...found];
+
+  const weak = new Set();
+  PROP_VALUE_RE.lastIndex = 0;
+  while ((m = PROP_VALUE_RE.exec(text))) {
+    const sel = selectors.get(m[1]);
+    if (sel && !strong.has(sel)) weak.add(sel);
+  }
+
+  return { strong: [...strong], weak: [...weak] };
 }
 
 // Click-triggered elements for a detected node, resolved through whichever
 // of findSource/findAnimateSource applies to its engine (see resolveJs in
-// CodePanel.js for the same dispatch). Empty for anything not authored in a
-// same-origin script findSource/findAnimateSource could locate at all.
+// CodePanel.js for the same dispatch). `{ strong: [], weak: [] }` for
+// anything not authored in a same-origin script findSource/findAnimateSource
+// could locate at all.
 export async function findClickTriggers(node) {
   const found = node.engine === 'waapi' || node.engine === 'motion' ? await findAnimateSource(node) : await findSource(node);
-  return found ? clickTriggerSelectors(found.text) : [];
+  return found ? clickTriggerSelectors(found.text) : { strong: [], weak: [] };
 }

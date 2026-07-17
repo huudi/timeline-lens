@@ -11,11 +11,22 @@ import { targetLabel } from '../detect.js';
 import { detectPlugins, scrollTriggerConfig, matchMediaConfig, viewportLabel, methodGuess, isGeneratedConditionName } from '../describe.js';
 import { animationConditions } from '../describe-css.js';
 import { findClickTriggers } from '../source.js';
+import { reactClickTriggers } from '../react-props.js';
+import { liveClickTriggers } from '../click-ref.js';
 import { fmt, fmtTime, visibleVarEntries, formatVarValue, ENGINE_RECON_TEXT, HResizeHandle } from './util.js';
 
 function countTargets(node) {
   if (node.type === 'tween') return node.targets.length;
   return (node.children || []).reduce((n, c) => n + countTargets(c), 0);
+}
+
+// Every real target element a node (tween or timeline) animates, gathered
+// recursively — what reactClickTriggers/liveClickTriggers need to walk each
+// one's own component boundary from (see react-props.js/click-ref.js).
+// Mirrors countTargets' own tween/timeline recursion just above.
+function collectTargets(node) {
+  if (node.type === 'tween') return node.targets || [];
+  return (node.children || []).flatMap(collectTargets);
 }
 
 function Field({ label, value }) {
@@ -26,10 +37,20 @@ function Field({ label, value }) {
 // (see source.js's findClickTriggers) — a carousel's prev/next buttons and
 // nav dots, for instance. Shown alongside (not instead of) a gsap
 // ScrollTrigger/CSS scroll-driven trigger, since an element can be wired up
-// to more than one kind of trigger at once.
-function ClickTriggerField({ selectors }) {
-  if (!selectors || !selectors.length) return null;
-  return html`<${Field} label=${selectors.length === 1 ? 'Click trigger' : 'Click triggers'} value=${selectors.join(', ')} />`;
+// to more than one kind of trigger at once. `clickTriggers` is source.js's
+// `{ strong, weak }` shape: `strong` from an exact `addEventListener('click',
+// ...)` match, `weak` from a declared-selector variable merely handed to some
+// call as a config value (e.g. a slider library's `prevEl`/`nextEl`) — real
+// evidence of wiring, just not proof it's specifically a click handler, so
+// it's labeled and rendered separately rather than blended into `strong`.
+function ClickTriggerField({ clickTriggers }) {
+  const strong = clickTriggers?.strong || [];
+  const weak = clickTriggers?.weak || [];
+  if (!strong.length && !weak.length) return null;
+  return html`
+    ${strong.length ? html`<${Field} label=${strong.length === 1 ? 'Click trigger' : 'Click triggers'} value=${strong.join(', ')} />` : null}
+    ${weak.length ? html`<${Field} label="Possibly wired" value=${weak.join(', ')} />` : null}
+  `;
 }
 
 const CSS_HEADS = {
@@ -73,7 +94,7 @@ function CssTrigger({ node, clickTriggers }) {
   // waapi/motion: no scroll linkage — only a JS element.animate() call could
   // have fired it, so a click trigger found in that call's source (see
   // findClickTriggers) is the only trigger info there is to show.
-  if (clickTriggers?.length) return html`<${ClickTriggerField} selectors=${clickTriggers} />`;
+  if (clickTriggers?.strong?.length || clickTriggers?.weak?.length) return html`<${ClickTriggerField} clickTriggers=${clickTriggers} />`;
   return html`<div class="gts-note">Time-based (document timeline).</div>`;
 }
 
@@ -119,7 +140,7 @@ function CssProperties({ node, clickTriggers }) {
       <${CssTrigger} node=${node} clickTriggers=${clickTriggers} />
 
       <hr class="gts-sep" />
-      <div class="gts-props-subhead">Match media</div>
+      <div class="gts-props-subhead">Viewport</div>
       <${CssMatchMedia} node=${node} />
     </div>
   `;
@@ -143,7 +164,7 @@ function CssMatchMedia({ node }) {
   // rescans that flip which @media conditions are active.
   const conditional = useMemo(() => (name ? animationConditions(name, target) : []), [name, target, entries.value]);
   if (!conditional.length) {
-    return html`<div class="gts-note">No media query restriction — applies at every viewport size.</div>`;
+    return html`<div class="gts-note">No viewport settings enabled.</div>`;
   }
   return conditional.map((d, i) => {
     const media = d.conditions.filter((c) => c.startsWith('@media ')).map((c) => c.slice('@media '.length));
@@ -170,16 +191,41 @@ export function PropertiesPanel() {
   // listener at all (see resolveJs in CodePanel.js), so there's nothing to
   // scan for those. Hooks must run on every render regardless of which
   // branch below returns, so this sits above the early returns.
-  const [clickTriggers, setClickTriggers] = useState(undefined);
+  const [sourceClickTriggers, setSourceClickTriggers] = useState(undefined);
   useEffect(() => {
-    setClickTriggers(undefined);
+    setSourceClickTriggers(undefined);
     if (!node || node.engine === 'css-animation' || node.engine === 'css-transition') return;
     let cancelled = false;
-    findClickTriggers(node).then((r) => !cancelled && setClickTriggers(r));
+    findClickTriggers(node).then((r) => !cancelled && setSourceClickTriggers(r));
     return () => {
       cancelled = true;
     };
   }, [node?.id]);
+
+  // Two live-DOM click-trigger signals, read straight off the node's real
+  // targets rather than scanned from source text — synchronous, no
+  // fetch/state needed, and just as strong a signal as source.js's exact
+  // addEventListener('click', ...) match, so both are merged into the same
+  // `strong` tier below rather than shown as separate categories:
+  // reactClickTriggers (react-props.js) for a JSX `onClick` prop,
+  // liveClickTriggers (click-ref.js) for a real, directly-attached listener
+  // — including one reached only via a React ref's imperative
+  // `.current.addEventListener('click', ...)`, which has no JSX prop for
+  // the former to find and no source-text signal source.js could resolve
+  // either (see click-ref.js's header comment). Recomputed whenever the
+  // selection changes; a stale `strong` from a still-in-flight
+  // findClickTriggers() fetch briefly missing these is fine, since both
+  // always keep up with the current node regardless of that fetch's state.
+  const liveTargets = useMemo(() => collectTargets(node ?? { children: [], targets: [] }), [node?.id]);
+  const liveTriggers = useMemo(
+    () => [...new Set([...reactClickTriggers(liveTargets), ...liveClickTriggers(liveTargets)])],
+    [liveTargets]
+  );
+  const clickTriggers = useMemo(() => {
+    if (!liveTriggers.length) return sourceClickTriggers;
+    const strong = new Set([...(sourceClickTriggers?.strong || []), ...liveTriggers]);
+    return { strong: [...strong], weak: sourceClickTriggers?.weak || [] };
+  }, [sourceClickTriggers, liveTriggers]);
 
   if (!node) {
     return html`<div class="gts-props" style="width:${propsWidth.value}px">
@@ -240,7 +286,7 @@ export function PropertiesPanel() {
 
       <hr class="gts-sep" />
       <div class="gts-props-subhead">Trigger</div>
-      <${ClickTriggerField} selectors=${clickTriggers} />
+      <${ClickTriggerField} clickTriggers=${clickTriggers} />
       ${st
         ? html`
             <${Field} label="Type" value="ScrollTrigger" />
@@ -251,14 +297,14 @@ export function PropertiesPanel() {
             ${st.toggleActions ? html`<${Field} label="Toggle actions" value=${st.toggleActions} />` : null}
             ${st.markers ? html`<${Field} label="Markers" value=${formatVarValue(st.markers)} />` : null}
           `
-        : !clickTriggers?.length
+        : !clickTriggers?.strong?.length && !clickTriggers?.weak?.length
         ? html`<div class="gts-note">
-            No ScrollTrigger linked${node.isCompleted ? ' (unavailable once reconstructed).' : '.'}
+            No trigger detected${node.isCompleted ? ' (unavailable once reconstructed).' : '.'}
           </div>`
         : null}
 
       <hr class="gts-sep" />
-      <div class="gts-props-subhead">Match media</div>
+      <div class="gts-props-subhead">Viewport</div>
       ${mm
         ? Object.entries(mm.queries).map(([name, query]) => {
             const range = viewportLabel(query);
@@ -269,7 +315,7 @@ export function PropertiesPanel() {
               value=${range ? `${range} — ${query} (${state})` : `${query} (${state})`}
             />`;
           })
-        : html`<div class="gts-note">Not inside gsap.matchMedia() — runs at every viewport size.</div>`}
+        : html`<div class="gts-note">No viewport settings enabled.</div>`}
     </div>
   `;
 }

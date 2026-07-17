@@ -11,6 +11,7 @@ import { App } from './ui/App.js';
 import { cssText } from './styles.js';
 import { gsap, ensureGsap } from './gsap-ref.js';
 import { ensureMotionAttribution } from './motion-ref.js';
+import { ensureClickListenerAttribution } from './click-ref.js';
 import { mountHighlight } from './highlight.js';
 import { scanExisting } from './detect.js';
 import { scanCssAnimations } from './detect-css.js';
@@ -85,6 +86,12 @@ export async function init() {
   // top-level script code, so this still misses page-load-time calls, an
   // accepted limitation, not something installing any earlier can fix.
   ensureMotionAttribution();
+
+  // Same "install as early as possible, dev-only activation means still
+  // missing page-load-time calls" caveat as ensureMotionAttribution just
+  // above, applied to real addEventListener('click', ...) calls instead of
+  // .animate() calls — see click-ref.js.
+  ensureClickListenerAttribution();
 
   const mount = () => {
     host = document.createElement('div');
