@@ -23,7 +23,7 @@ export function detectPlugins(node) {
     for (const key of Object.keys(n.vars || {})) {
       if (registry[key]) found.add(pluginDisplayName(key));
     }
-    if (n.ref?.scrollTrigger) found.add('ScrollTrigger');
+    if (n.ref?.scrollTrigger || n.scrollTrigger) found.add('ScrollTrigger');
     for (const child of n.children || []) scan(child);
   };
   scan(node);
@@ -39,19 +39,26 @@ function selectorGuess(targets) {
   return el.tagName.toLowerCase();
 }
 
-// A ScrollTrigger-linked animation exposes the real, live ScrollTrigger
-// instance via `.scrollTrigger`, only available while the animation is
-// still live (a reconstructed instance never had one attached).
+// A ScrollTrigger-linked animation exposes its config two ways: the
+// snapshot detect.js captured off the live instance the last time it was
+// still attached (node.scrollTrigger — see scrollTriggerSnapshot there,
+// which survives a `once: true` trigger self-killing after it fires), or,
+// failing that, the live `.scrollTrigger` instance directly (only ever
+// populated for a node detect.js hasn't snapshotted at all, e.g. one built
+// by an older host bundle still holding an out-of-date copy of this
+// package). Both shapes are normalized to the same plain object here so
+// callers don't need to know which one they got.
 export function scrollTriggerConfig(node) {
-  const st = node.ref?.scrollTrigger;
+  const snap = node.scrollTrigger;
+  const st = snap || node.ref?.scrollTrigger;
   if (!st) return null;
   return {
     trigger: selectorGuess([st.trigger]),
     start: st.start,
     end: st.end,
-    scrub: !!st.vars?.scrub,
-    toggleActions: st.vars?.toggleActions || null,
-    markers: st.vars?.markers ?? false,
+    scrub: snap ? st.scrub : !!st.vars?.scrub,
+    toggleActions: snap ? st.toggleActions : st.vars?.toggleActions || null,
+    markers: snap ? st.markers : st.vars?.markers ?? false,
   };
 }
 

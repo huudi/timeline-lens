@@ -63,6 +63,33 @@ function matchMediaSnapshot(anim) {
   return { queries: { ...ctx.queries }, conditions: { ...(ctx.conditions || {}) } };
 }
 
+// Captures ScrollTrigger's config off the live instance while it's still
+// attached. GSAP nulls out `animation.scrollTrigger` the moment a `once:
+// true` ScrollTrigger self-kills after firing — well before the
+// animation's own node is ever marked completed (the tween/timeline itself
+// keeps playing after the trigger fires, and a top-level entry isn't
+// unlinked from gsap.globalTimeline until its own playback finishes).
+// Reading `node.ref.scrollTrigger` lazily at render time (the old approach,
+// see describe.js's scrollTriggerConfig) comes up empty for exactly the
+// once-off triggers users most want to keep inspecting after they've
+// fired. Snapshotted once, the first scan it's still there, and kept for
+// the node's entire lifetime after — unlike matchMediaSnapshot above, this
+// deliberately does NOT keep re-reading (and overwriting) on every scan
+// once captured: a self-killed ScrollTrigger going away is never "more
+// correct" than the last real config it had.
+function scrollTriggerSnapshot(anim, existing) {
+  const st = anim.scrollTrigger;
+  if (!st) return existing || null;
+  return {
+    trigger: st.trigger,
+    start: st.start,
+    end: st.end,
+    scrub: !!st.vars?.scrub,
+    toggleActions: st.vars?.toggleActions || null,
+    markers: st.vars?.markers ?? false,
+  };
+}
+
 function describe(anim) {
   const tl = isTimeline(anim);
   const targets = !tl && typeof anim.targets === 'function' ? anim.targets() : [];
@@ -135,6 +162,11 @@ function upsertNode(anim, start, topLevel) {
     node = nodeForInstance(anim) || topLevelIds.map((id) => nodesById.get(id)).find((n) => n && sameAnimation(n, desc));
     revived = !!node;
   }
+  // Resolved after the revived-lookup above (not inside describe()) so a
+  // revived reconstruction — whose fresh gsap instance never has a real
+  // ScrollTrigger attached, see reconstruct.js — inherits the original
+  // node's already-captured snapshot instead of clobbering it with null.
+  desc.scrollTrigger = scrollTriggerSnapshot(anim, node?.scrollTrigger);
   if (!node) {
     node = { id: nextId(), ref: anim, isCompleted: false, start, ...desc, children: [] };
     knownByRef.set(anim, node);
