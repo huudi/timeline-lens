@@ -25,6 +25,20 @@ import { forgetReconstruction, nodeForInstance } from './reconstruct.js';
 let n = 0;
 const nextId = () => `anim-${++n}`;
 
+// Ordinal assigned once, at creation, to each new top-level node with no
+// authored `vars.id` — in creation order, which for a normal
+// synchronously-authored page matches the order its
+// `gsap.timeline()/gsap.to()/...` call appears in source. source.js's
+// findSource has no id or literal-selector to key an unlabeled top-level
+// animation by (e.g. `gsap.timeline({...}).from(heading, ...)`, where
+// `heading` is a local variable, not a selector string) — this gives it a
+// last-resort positional key instead: source.js builds the same ordinal
+// over unlabeled top-level calls found in the page's own scripts (sorted by
+// file position), and matches index-for-index. A plain monotonic counter,
+// not something recomputed from topLevelIds on every scan, so an ordinal
+// already handed out never shifts under an existing node.
+let nextUnlabeledTopLevelIndex = 0;
+
 const isTimeline = (a) => !!gsap && a instanceof gsap.core.Timeline;
 
 // gsap.delayedCall() / timeline.call() aren't animations: GSAP implements
@@ -169,6 +183,8 @@ function upsertNode(anim, start, topLevel) {
   desc.scrollTrigger = scrollTriggerSnapshot(anim, node?.scrollTrigger);
   if (!node) {
     node = { id: nextId(), ref: anim, isCompleted: false, start, ...desc, children: [] };
+    node.topLevel = topLevel;
+    if (topLevel && desc.vars?.id == null) node.unlabeledIndex = nextUnlabeledTopLevelIndex++;
     knownByRef.set(anim, node);
     nodesById.set(node.id, node);
   } else {

@@ -710,7 +710,24 @@ async function ensureLoaded() {
         const sel = selectorOf(f.keyText);
         if (sel && !bySelector.has(sel)) bySelector.set(sel, f);
       }
-      cache = { byId, bySelector };
+      // Top-level animations with neither an authored `id:` nor a literal
+      // selector string of their own (e.g. `gsap.timeline({...}).from(heading,
+      // ...)`, where `heading` is a local variable, not `gsap.to('.sel', ...)`)
+      // can't be keyed by either map above — there's nothing in their own call
+      // to key off. Sorted by (file, line) rather than left in the order
+      // parseFile's regex passes happened to encounter them (which groups by
+      // pattern — every `const x = gsap.timeline(...)` before any bare
+      // `gsap.timeline(...)`, regardless of which actually comes first on the
+      // page — not by source position), so this reads top-to-bottom the way
+      // the page really authored and ran them. Matched positionally in
+      // findSource below, index-for-index against detect.js's own
+      // same-order `unlabeledIndex` counter — a last-resort, best-effort key,
+      // not a real identity, but far better than the alternative of never
+      // matching this shape at all.
+      const positional = found
+        .filter((f) => !idOf(f.keyText) && !selectorOf(f.keyText))
+        .sort((a, b) => (a.url === b.url ? a.line - b.line : a.url < b.url ? -1 : 1));
+      cache = { byId, bySelector, positional };
       return cache;
     });
   }
@@ -726,15 +743,24 @@ function selectorGuess(node) {
 }
 
 // Best-effort lookup of a detected node's real authored source; matches by
-// `vars.id` first (exact), falling back to its first target's selector.
-// Resolves to `null` if nothing in the page's own same-origin scripts
-// matches (e.g. it's minified, bundled from elsewhere, or just not found).
+// `vars.id` first (exact), then its first target's selector (tweens only —
+// a timeline has no targets of its own), then, for a top-level node that
+// cleared neither (e.g. an unlabeled `gsap.timeline()` whose targets are
+// all local variables, not selector strings), the positional fallback: see
+// the `positional` comment in ensureLoaded above and detect.js's
+// `unlabeledIndex`. Resolves to `null` if nothing in the page's own
+// same-origin scripts matches even that (e.g. it's minified, bundled from
+// elsewhere, or just not found).
 export async function findSource(node) {
-  const { byId, bySelector } = await ensureLoaded();
+  const { byId, bySelector, positional } = await ensureLoaded();
   const id = node.vars?.id;
   if (id != null && byId.has(String(id))) return byId.get(String(id));
   const sel = node.type === 'tween' ? selectorGuess(node) : null;
   if (sel && bySelector.has(sel)) return bySelector.get(sel);
+  if (id == null && node.topLevel && node.unlabeledIndex != null) {
+    const found = positional[node.unlabeledIndex];
+    if (found) return found;
+  }
   return null;
 }
 
