@@ -27,6 +27,7 @@
 // the original text, real newlines included, before any line is counted.
 
 import { formatCssText } from './format-css.js';
+import { allowedOrigins } from './source.js';
 
 const VITE_CSS_MODULE_RE = /\b__vite__css\s*=\s*("(?:[^"\\]|\\.)*")/;
 
@@ -57,7 +58,7 @@ function sourceUrlFor(sheet) {
   if (sheet.href) {
     try {
       const u = new URL(sheet.href, location.href);
-      return u.origin === location.origin ? u.href : null;
+      return allowedOrigins().has(u.origin) ? u.href : null;
     } catch {
       return null;
     }

@@ -65,18 +65,40 @@ function isOwnPackagePath(pathname) {
   return pathname.startsWith(OWN_SRC_ROOT);
 }
 
+// "Same origin as the page" (location.origin) is too narrow a check on its
+// own: a dev proxy setup (e.g. DDEV fronting the app on :443 while Vite's
+// own dev server listens on :5173, per vite.config.ts's `server.origin`)
+// serves the entry `<script src>` itself from a different port, and
+// therefore a different origin, than location.origin — even though it's
+// still 100% the host project's own script, just fetched from Vite's dev
+// origin instead of the page's. Without this, fetchSameOriginScripts below
+// filters out every entry script in that setup and the crawl never starts.
+// Treat any origin an entry `<script>` tag on the page actually uses as
+// fair game too, not just location.origin.
+export function allowedOrigins() {
+  const origins = new Set([location.origin]);
+  for (const el of document.scripts) {
+    if (!el.src) continue;
+    try {
+      origins.add(new URL(el.src, location.href).origin);
+    } catch {}
+  }
+  return origins;
+}
+
 // Same-origin scripts reachable from the page: the entry `<script>` tags
 // themselves, plus everything they (transitively) import via relative
 // specifiers, e.g. a nav bar's animation authored in its own module and
 // pulled into main.js via `import './nav.js'` never appears as a `<script>`
 // element itself, so it has to be discovered by following imports instead.
 async function fetchSameOriginScripts() {
+  const origins = allowedOrigins();
   const entryUrls = new Set();
   for (const el of document.scripts) {
     if (!el.src) continue;
     try {
       const u = new URL(el.src, location.href);
-      if (u.origin === location.origin && !isVendorPath(u.pathname) && !isOwnPackagePath(u.pathname)) entryUrls.add(el.src);
+      if (origins.has(u.origin) && !isVendorPath(u.pathname) && !isOwnPackagePath(u.pathname)) entryUrls.add(el.src);
     } catch {}
   }
 
@@ -105,7 +127,7 @@ async function fetchSameOriginScripts() {
       try {
         const resolved = new URL(spec, url);
         if (
-          resolved.origin === location.origin &&
+          origins.has(resolved.origin) &&
           !isVendorPath(resolved.pathname) &&
           !isOwnPackagePath(resolved.pathname) &&
           !visited.has(resolved.href)
