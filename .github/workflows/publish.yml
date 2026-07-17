@@ -9,13 +9,14 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.14
           registry-url: https://registry.npmjs.org
 
       - name: Verify tag matches package.json version
@@ -28,5 +29,3 @@ jobs:
           fi
 
       - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
