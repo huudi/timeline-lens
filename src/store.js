@@ -21,6 +21,17 @@ function loadPersisted() {
 }
 const persisted = loadPersisted();
 
+// Whether ANY of the studio's own UI (trigger button, panel, mini player) is
+// allowed to render at all — distinct from panelOpen/miniOpen below, which
+// choose *which* surface shows once this is true. Lets a host page call
+// init({ hidden: true }) to start detection (so a fast page-load animation
+// is captured before it finishes, see gsap-call-site.js) without the
+// trigger button popping up before the visitor has actually asked for it;
+// index.js's reveal() flips this once they have. Never persisted — a host
+// page's own hidden/revealed choice is a fresh decision every load, not
+// something the studio should remember on its own.
+export const uiRevealed = signal(true);
+
 // panel visibility
 export const panelOpen = signal(persisted.panelOpen ?? false);
 

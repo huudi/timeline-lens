@@ -628,12 +628,43 @@ function parseFile(text, url) {
   // `querySelectorAll('.slide-carousel .slide')`, which would otherwise
   // shadow the real `.slide-text` selector this match is actually for).
   // `text` is the expanded component, used only for display.
-  function record(start, end, varName, method) {
+  //
+  // For a `timeline` match specifically, `keyText` narrows further still,
+  // to `ownEnd` (the timeline's own construction call, before any chained
+  // `.to()/.from()/...`) rather than the full chain `end` covers: a
+  // timeline has no targets of its own (see selectorGuess's own comment to
+  // that effect), so idOf/selectorOf run against the full chain instead
+  // read its *first child's* id/selector as if it belonged to the timeline
+  // itself — e.g. `gsap.timeline({...}).from('#nav', {...})...` looks like
+  // it has selector '#nav', when '#nav' is that child tween's target, not
+  // the timeline's. That wrongly disqualified plenty of anonymous timelines
+  // from `positional` below, the only bucket a timeline-type node (never
+  // matched via bySelector — again, no targets of its own) can ever be
+  // found through — see findSource's own `node.type === 'tween'` guard.
+  //
+  // `callIndex` (default `start`) is the exact position of the `gsap` token
+  // itself in the matched call — not necessarily `start`, which for a
+  // `const x = gsap.timeline(...)` declaration sits at the `const` keyword
+  // instead. Recorded as `callLine` alongside the already-existing display
+  // `line` (which points at the *expanded component*'s own start, e.g. the
+  // enclosing function, not the call site) so gsap-call-site.js's exact,
+  // stack-trace-captured `{url, line}` can be matched against it directly —
+  // see byLocation below and findSource's `node.callSite` check.
+  function record(start, end, varName, method, ownEnd, callIndex = start) {
     const keyText = dedent(text.slice(start, end));
+    const classifyText = method === 'timeline' && ownEnd != null ? dedent(text.slice(start, ownEnd)) : keyText;
     const expansion = expandToComponent(text, stmts, codeTexts, byName, start);
     const outText = expansion ? expansion.text : keyText;
     const locIndex = expansion ? expansion.seedStart : start;
-    found.push({ varName, method, text: outText, keyText, url, line: lineOf(text, locIndex) });
+    found.push({
+      varName,
+      method,
+      text: outText,
+      keyText: classifyText,
+      url,
+      line: lineOf(text, locIndex),
+      callLine: lineOf(text, callIndex),
+    });
   }
 
   DECL_RE.lastIndex = 0;
@@ -641,11 +672,12 @@ function parseFile(text, url) {
   while ((m = DECL_RE.exec(text))) {
     const start = m.index;
     const openIdx = start + m[0].length - 1;
-    const declEnd = consumeStatementEnd(text, matchCall(text, openIdx));
+    const ownEnd = matchBalanced(text, openIdx);
+    const declEnd = consumeStatementEnd(text, followChains(text, ownEnd));
     const chain = trailingChainFor(text, declEnd, m[2]);
     const end = chain ? chain[1] : declEnd;
     spans.push([start, end]);
-    record(start, end, m[2], m[3]);
+    record(start, end, m[2], m[3], ownEnd, start + m[0].indexOf('gsap'));
   }
 
   ASSIGN_RE.lastIndex = 0;
@@ -653,9 +685,10 @@ function parseFile(text, url) {
     const start = m.index;
     if (spans.some(([s, e]) => start >= s && start < e)) continue; // already captured as a declaration
     const openIdx = start + m[0].length - 1;
-    const end = matchCall(text, openIdx);
+    const ownEnd = matchBalanced(text, openIdx);
+    const end = followChains(text, ownEnd);
     spans.push([start, end]);
-    record(start, end, m[1], m[2]);
+    record(start, end, m[1], m[2], ownEnd, start + m[0].indexOf('gsap'));
   }
 
   BARE_RE.lastIndex = 0;
@@ -663,8 +696,12 @@ function parseFile(text, url) {
     const start = m.index;
     if (spans.some(([s, e]) => start >= s && start < e)) continue; // already part of a captured statement
     const openIdx = start + m[0].length - 1;
-    const end = matchCall(text, openIdx);
-    record(start, end, null, m[1]);
+    const ownEnd = matchBalanced(text, openIdx);
+    const end = followChains(text, ownEnd);
+    // BARE_RE's own match already begins exactly at "gsap", unlike DECL_RE/
+    // ASSIGN_RE above whose `start` sits at the `const`/`var` keyword or the
+    // reassigned identifier instead — no offset needed here.
+    record(start, end, null, m[1], ownEnd);
   }
 
   ANIMATE_METHOD_RE.lastIndex = 0;
@@ -694,6 +731,21 @@ function parseFile(text, url) {
   return found;
 }
 
+// Vite dev-server module URLs (and similar) can carry a cache-busting or
+// version query string (`?v=abc123`, `?t=169...`) that a stack-trace-
+// reported URL and a `<script src>`-resolved URL aren't guaranteed to agree
+// on down to the byte, even for the exact same running module instance in
+// the exact same page load. Stripped from both sides before comparing (see
+// locationKey below) so that possibility can't silently break an otherwise
+// exact match.
+function normalizeUrl(url) {
+  return url.split(/[?#]/)[0];
+}
+
+function locationKey(url, line) {
+  return `${normalizeUrl(url)}:${line}`;
+}
+
 async function ensureLoaded() {
   if (cache) return cache;
   if (!loading) {
@@ -704,30 +756,56 @@ async function ensureLoaded() {
       }
       const byId = new Map();
       const bySelector = new Map();
+      const byLocation = new Map();
       for (const f of found) {
         const id = idOf(f.keyText);
         if (id && !byId.has(id)) byId.set(id, f);
         const sel = selectorOf(f.keyText);
         if (sel && !bySelector.has(sel)) bySelector.set(sel, f);
+        // Keyed by the exact `gsap.*(` call site (see record()'s callLine),
+        // for gsap-call-site.js's stack-trace-captured matches — see
+        // findSource's `node.callSite` check. `animate` calls have no gsap
+        // call site to match against (findAnimateSource is their own,
+        // separate, id-only lookup), so they're left out of this map.
+        if (f.method !== 'animate') {
+          const key = locationKey(f.url, f.callLine);
+          if (!byLocation.has(key)) byLocation.set(key, f);
+        }
       }
-      // Top-level animations with neither an authored `id:` nor a literal
-      // selector string of their own (e.g. `gsap.timeline({...}).from(heading,
-      // ...)`, where `heading` is a local variable, not `gsap.to('.sel', ...)`)
-      // can't be keyed by either map above — there's nothing in their own call
-      // to key off. Sorted by (file, line) rather than left in the order
-      // parseFile's regex passes happened to encounter them (which groups by
-      // pattern — every `const x = gsap.timeline(...)` before any bare
-      // `gsap.timeline(...)`, regardless of which actually comes first on the
-      // page — not by source position), so this reads top-to-bottom the way
-      // the page really authored and ran them. Matched positionally in
-      // findSource below, index-for-index against detect.js's own
-      // same-order `unlabeledIndex` counter — a last-resort, best-effort key,
-      // not a real identity, but far better than the alternative of never
-      // matching this shape at all.
+      // Every id-less GSAP call (timeline/to/from/fromTo — `animate` is
+      // WAAPI/Motion's own findAnimateSource's territory, keyed by id only,
+      // never positional), regardless of whether it ALSO has a selector of
+      // its own. detect.js's own `unlabeledIndex` ordinal (see its header
+      // comment) increments for every id-less *top-level* node, selector or
+      // not — a `gsap.to('#foo', {...})` tween consumes a slot in that count
+      // exactly like a selector-less one does, it just happens to resolve
+      // via bySelector before findSource ever reads its slot here. Filtering
+      // those selector-bearing entries out of this array (the previous
+      // shape) compacted it down to a *shorter* sequence than
+      // unlabeledIndex actually counts against, so every entry here shifted
+      // left by however many selector-bearing (but still id-less) calls
+      // preceded it — handing findSource a completely unrelated node's
+      // source for anything past the first one. A selector-bearing entry
+      // still occupying its slot here is harmless: nothing ever reads it,
+      // since a node that resolves via byId/bySelector short-circuits
+      // before reaching this fallback (see findSource below) — it exists
+      // purely to keep every *other* entry's slot aligned. Sorted by (file,
+      // line) rather than left in the order parseFile's regex passes
+      // happened to encounter them (which groups by pattern — every `const x
+      // = gsap.timeline(...)` before any bare `gsap.timeline(...)`,
+      // regardless of which actually comes first on the page — not by
+      // source position), so this reads top-to-bottom the way the page
+      // really authored and ran them. Matched positionally in findSource
+      // below, index-for-index against detect.js's own same-order
+      // `unlabeledIndex` counter — a last-resort, best-effort key, not a
+      // real identity (an animation created inside a `.forEach()` — several
+      // live instances from one authored line — still only has the one
+      // source slot to point every instance at), but far better than the
+      // alternative of never matching this shape at all.
       const positional = found
-        .filter((f) => !idOf(f.keyText) && !selectorOf(f.keyText))
+        .filter((f) => f.method !== 'animate' && !idOf(f.keyText))
         .sort((a, b) => (a.url === b.url ? a.line - b.line : a.url < b.url ? -1 : 1));
-      cache = { byId, bySelector, positional };
+      cache = { byId, bySelector, byLocation, positional };
       return cache;
     });
   }
@@ -742,24 +820,87 @@ function selectorGuess(node) {
   return el.tagName.toLowerCase();
 }
 
-// Best-effort lookup of a detected node's real authored source; matches by
-// `vars.id` first (exact), then its first target's selector (tweens only —
-// a timeline has no targets of its own), then, for a top-level node that
-// cleared neither (e.g. an unlabeled `gsap.timeline()` whose targets are
-// all local variables, not selector strings), the positional fallback: see
-// the `positional` comment in ensureLoaded above and detect.js's
-// `unlabeledIndex`. Resolves to `null` if nothing in the page's own
-// same-origin scripts matches even that (e.g. it's minified, bundled from
-// elsewhere, or just not found).
+// Selector-ish labels (`#id`, `.class`) this node itself — or, for a
+// timeline, any of its descendant tweens — actually targets on the live
+// page. Used only to corroborate a positional guess below, never as a
+// lookup key of its own: unlike bySelector's exact match against a call's
+// own literal selector *string*, this reads real target Elements off the
+// live/snapshotted node, which works even when the animation targets a
+// local variable (`split.lines`, a `querySelectorAll` result, ...) rather
+// than a selector string gsap resolved internally.
+function targetLabels(node) {
+  const labels = new Set();
+  const stack = [node];
+  while (stack.length) {
+    const n = stack.pop();
+    for (const t of n.targets || []) {
+      if (typeof Element === 'undefined' || !(t instanceof Element)) continue;
+      if (t.id) labels.add(`#${t.id}`);
+      for (const c of t.classList) labels.add(`.${c}`);
+    }
+    stack.push(...(n.children || []));
+  }
+  return labels;
+}
+
+function scoreByLabels(candidateText, labels) {
+  let score = 0;
+  for (const label of labels) if (candidateText.includes(label)) score++;
+  return score;
+}
+
+// Best-effort lookup of a detected node's real authored source, tried in
+// order of how much it can actually be trusted:
+//
+// 1. `vars.id` (exact — an authored id can only ever mean one thing).
+// 2. `node.callSite` (exact — gsap-call-site.js captured the real call's
+//    own file:line via a stack trace; see its header comment for when this
+//    is and isn't available).
+// 3. its first target's selector (tweens only — a timeline has no targets
+//    of its own).
+// 4. the positional fallback (see the `positional` comment in ensureLoaded
+//    above and detect.js's `unlabeledIndex`), for whatever's left: an
+//    unlabeled top-level call with no call site captured (created before
+//    gsap-call-site.js's wrap installed) and no literal selector of its own
+//    (e.g. an unlabeled `gsap.timeline()` whose targets are all local
+//    variables). This is the weakest signal — a live-discovery-order count
+//    matched against a static, file-position-sorted list, which silently
+//    breaks whenever an earlier unlabeled top-level animation already
+//    completed and was auto-removed before the first scan, or fires out of
+//    file order relative to another one (see gsap-call-site.js's header
+//    comment) — so the guessed candidate is cross-checked against the
+//    node's own live target selectors first, and only trusted as-is when no
+//    *other* positional candidate corroborates better. Still just a
+//    best-effort tiebreaker, not proof, when nothing about the node's own
+//    targets survived to check against (e.g. non-Element targets).
+//
+// Resolves to `null` if nothing in the page's own same-origin scripts
+// matches even that (e.g. it's minified, bundled from elsewhere, or just
+// not found).
 export async function findSource(node) {
-  const { byId, bySelector, positional } = await ensureLoaded();
+  const { byId, bySelector, byLocation, positional } = await ensureLoaded();
   const id = node.vars?.id;
   if (id != null && byId.has(String(id))) return byId.get(String(id));
+  if (node.callSite) {
+    const found = byLocation.get(locationKey(node.callSite.url, node.callSite.line));
+    if (found) return found;
+  }
   const sel = node.type === 'tween' ? selectorGuess(node) : null;
   if (sel && bySelector.has(sel)) return bySelector.get(sel);
   if (id == null && node.topLevel && node.unlabeledIndex != null) {
-    const found = positional[node.unlabeledIndex];
-    if (found) return found;
+    const guess = positional[node.unlabeledIndex];
+    const labels = targetLabels(node);
+    if (labels.size === 0) return guess || null;
+    let best = guess || null;
+    let bestScore = guess ? scoreByLabels(guess.text, labels) : -1;
+    for (const candidate of positional) {
+      const score = scoreByLabels(candidate.text, labels);
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+    return bestScore > 0 ? best : guess || null;
   }
   return null;
 }

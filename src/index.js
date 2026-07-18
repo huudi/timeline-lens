@@ -4,6 +4,19 @@
 //   if (import.meta.env.DEV) {
 //     import('timeline-lens').then((m) => m.init());
 //   }
+//
+// Usage (detect from page load, reveal the UI later):
+//   import('timeline-lens').then((m) => m.init({ hidden: true }));
+//   ...
+//   myOwnButton.addEventListener('click', () => {
+//     import('timeline-lens').then((m) => m.reveal());
+//   });
+//   Starting detection this early means a short page-load animation that's
+//   already finished (and been pruned from gsap.globalTimeline) and gone by
+//   the time a visitor gets around to clicking anything is caught anyway —
+//   see gsap-call-site.js and detect.js's own header comment on that gap.
+//   `toggle()` already understands this shape too (see below), so it's
+//   fine to keep wiring a single button to `toggle()` either way.
 
 import { render } from 'preact';
 import { html } from 'htm/preact';
@@ -12,10 +25,11 @@ import { cssText } from './styles.js';
 import { gsap, ensureGsap } from './gsap-ref.js';
 import { ensureMotionAttribution } from './motion-ref.js';
 import { ensureClickListenerAttribution } from './click-ref.js';
+import { ensureGsapCallSites } from './gsap-call-site.js';
 import { mountHighlight } from './highlight.js';
 import { scanExisting } from './detect.js';
 import { scanCssAnimations } from './detect-css.js';
-import { entries, selectedId, panelOpen, miniOpen, tick, loopIds } from './store.js';
+import { entries, selectedId, panelOpen, miniOpen, uiRevealed, tick, loopIds } from './store.js';
 import { isFinished, restart } from './playback.js';
 
 let mounted = false;
@@ -71,14 +85,23 @@ function debounce(fn, ms) {
   };
 }
 
-export async function init() {
+export async function init({ hidden = false } = {}) {
   if (mounted || typeof document === 'undefined') return;
   mounted = true;
+  // Set before mount() ever renders App() (see its own uiRevealed check) so
+  // a hidden init never flashes the trigger button for even one frame.
+  uiRevealed.value = !hidden;
 
   // gsap is an optional peer dependency, resolved once up front, so the
   // rest of mount() can synchronously check the live `gsap` binding instead
   // of every caller having to await it separately.
   await ensureGsap();
+
+  // Same "install as early as possible" reasoning as ensureMotionAttribution
+  // just below, applied to gsap.timeline/to/from/fromTo instead of
+  // Element.prototype.animate — see gsap-call-site.js. Must run only once
+  // `gsap` itself has resolved (there's nothing to wrap before then).
+  ensureGsapCallSites(gsap);
 
   // Installed as early as possible so as many .animate() calls as possible
   // get an accurate captured call-site (see motion-ref.js); activation is a
@@ -211,12 +234,31 @@ export function destroy() {
   entries.value = [];
   selectedId.value = null;
   lastSignature = null;
+  // A later init() defaults to visible unless it explicitly asks to start
+  // hidden again — destroy() shouldn't leave that choice lingering from
+  // whichever call happened to mount last.
+  uiRevealed.value = true;
+}
+
+// Shows the studio's own UI (trigger button, and whichever of panel/mini
+// player was last open — see store.js's persisted panelOpen/miniOpen) after
+// an init({ hidden: true }) start. A no-op if nothing's mounted yet, or if
+// the UI is already showing.
+export function reveal() {
+  if (!mounted) return;
+  uiRevealed.value = true;
 }
 
 // Convenience for wiring the studio to a single runtime switch — a
 // keyboard shortcut, a dev-menu button, whatever fits your project — rather
-// than every caller having to track `mounted` state itself.
+// than every caller having to track `mounted`/`uiRevealed` state itself.
+// Understands three states: nothing mounted yet (mount it, visible, same as
+// calling init() directly); mounted but started hidden and not yet shown
+// (reveal it — this is what a "Try it now" button hits after an eager
+// init({ hidden: true }), see the header comment); mounted and already
+// showing (tear it all the way down, same as calling destroy() directly).
 export async function toggle() {
-  if (mounted) destroy();
-  else await init();
+  if (!mounted) return init();
+  if (!uiRevealed.value) return reveal();
+  destroy();
 }

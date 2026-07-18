@@ -21,6 +21,7 @@
 
 import { gsap } from './gsap-ref.js';
 import { forgetReconstruction, nodeForInstance } from './reconstruct.js';
+import { callSiteFor } from './gsap-call-site.js';
 
 let n = 0;
 const nextId = () => `anim-${++n}`;
@@ -185,6 +186,12 @@ function upsertNode(anim, start, topLevel) {
     node = { id: nextId(), ref: anim, isCompleted: false, start, ...desc, children: [] };
     node.topLevel = topLevel;
     if (topLevel && desc.vars?.id == null) node.unlabeledIndex = nextUnlabeledTopLevelIndex++;
+    // Only ever set for an instance created after gsap-call-site.js's wrap
+    // installed (see its header comment) — an exact, order-independent
+    // alternative to unlabeledIndex above for source.js's findSource to
+    // prefer whenever it's available. Captured once, at first sight, same
+    // as unlabeledIndex: a call site never changes across rescans.
+    if (topLevel) node.callSite = callSiteFor(anim);
     knownByRef.set(anim, node);
     nodesById.set(node.id, node);
   } else {

@@ -1,6 +1,7 @@
 import { html } from 'htm/preact';
 import { useEffect } from 'preact/hooks';
 import {
+  uiRevealed,
   panelOpen,
   miniOpen,
   panelHeight,
@@ -436,6 +437,12 @@ function useKeyboardShortcuts() {
 
 export function App() {
   useKeyboardShortcuts();
+  // Nothing at all — not even the trigger button — while a host page has
+  // asked to stay hidden (init({ hidden: true }), see index.js's reveal()).
+  // Detection itself (rescan/ticker/etc., all wired up in index.js's own
+  // mount(), independent of what App() renders) keeps running regardless;
+  // this only gates the UI.
+  if (!uiRevealed.value) return null;
   // the mini player replaces the trigger the same way the full panel does —
   // only one of trigger/panel/mini should ever be on screen at once
   const hideTrigger = panelOpen.value || miniOpen.value;
