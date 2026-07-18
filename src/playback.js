@@ -11,10 +11,56 @@
 // element's transitions, see detect-css.js) have no single instance, so
 // transport ops fan out across every child's own Animation.
 
-import { reconstructedInstance, peekReconstructed } from './reconstruct.js';
-import { reconstructedCssInstance, peekReconstructedCss } from './reconstruct-css.js';
+import { gsap } from './gsap-ref.js';
+import { reconstructedInstance, peekReconstructed, forgetReconstruction } from './reconstruct.js';
+import { reconstructedCssInstance, peekReconstructedCss, forgetCssReconstruction } from './reconstruct-css.js';
 
 const isCssNode = (node) => !!node.engine && node.engine !== 'gsap';
+
+// ---- force-renderable targets -----------------------------------------------
+//
+// A completed animation's targets can be genuinely unrenderable by the time
+// anyone tries to replay it: a splash/loader screen the host page sets
+// `display:none` on once its own real intro finishes, a `hidden` attribute,
+// an unmounted-then-remounted React node, etc. None of that is part of any
+// node's captured vars/keyframes, so no amount of correct scrubbing ever
+// makes it visible — the element itself just doesn't paint. Forced here,
+// gated exactly like building a reconstruction (see instanceFor/
+// cssInstanceFor below): only as a direct result of an explicit
+// play/pause/seek/speed call, never as a side effect of merely selecting or
+// displaying a row. Tracked in a plain Map (not a WeakMap) so
+// restoreForcedVisibility() can undo every override in one pass — index.js's
+// destroy() calls it, so turning the studio off leaves no trace on the host
+// page, same guarantee destroy() already makes for the trigger/panel/interval.
+const forcedVisible = new Map(); // element -> its original inline `display`
+
+function forceVisible(target) {
+  if (!(target instanceof Element) || forcedVisible.has(target) || !target.isConnected) return;
+  if (getComputedStyle(target).display !== 'none') return;
+  forcedVisible.set(target, target.style.display);
+  target.style.display = '';
+  // Clearing the inline style isn't enough when a stylesheet rule (a class,
+  // a media query) is what's actually hiding it rather than an inline style
+  // — fall back to a value that's guaranteed to paint. Best-effort, same as
+  // reconstruct.js's own tweens: this is a debugging aid, not a pixel-perfect
+  // restoration of whatever layout role `display` originally played.
+  if (getComputedStyle(target).display === 'none') target.style.display = 'block';
+}
+
+// Recurses into timeline children / CSS group children alike (both shapes
+// carry a `children` array, empty for a leaf — see detect.js/detect-css.js),
+// so a single call at the top level of instanceFor/cssInstanceFor reaches
+// every real target underneath, whichever engine built the node.
+function forceTargetsVisible(node) {
+  for (const child of node.children || []) forceTargetsVisible(child);
+  for (const t of node.targets || []) forceVisible(t);
+}
+
+// Undoes every forceVisible() override made this session.
+export function restoreForcedVisibility() {
+  for (const [el, display] of forcedVisible) el.style.display = display;
+  forcedVisible.clear();
+}
 
 // ---- gsap branch ------------------------------------------------------------
 
@@ -25,7 +71,9 @@ const isCssNode = (node) => !!node.engine && node.engine !== 'gsap';
 // effect of construction, so doing that just because a row is on screen
 // would visibly snap the page back without the user asking for it.
 function instanceFor(node) {
-  return node.isCompleted ? reconstructedInstance(node) : node.ref;
+  if (!node.isCompleted) return node.ref;
+  forceTargetsVisible(node);
+  return reconstructedInstance(node);
 }
 
 // Read-only: never builds a reconstruction, so it's safe to call from
@@ -41,7 +89,9 @@ function cssLeaves(node) {
 }
 
 function cssInstanceFor(leaf) {
-  return leaf.isCompleted ? reconstructedCssInstance(leaf) : leaf.ref;
+  if (!leaf.isCompleted) return leaf.ref;
+  forceTargetsVisible(leaf);
+  return reconstructedCssInstance(leaf);
 }
 
 function cssPeek(leaf) {
@@ -184,4 +234,64 @@ export function restart(node) {
     return;
   }
   instanceFor(node)?.play(0);
+}
+
+// ---- reset --------------------------------------------------------------
+//
+// Different problem from forceTargetsVisible above: that one is about the
+// *host page* hiding a target after the fact (display:none etc). This is
+// about GSAP/WAAPI's own writes lingering on the target long after the
+// animation itself is gone — a `.from()` intro's rendered end state, or
+// wherever the playhead was left after scrubbing — which otherwise makes a
+// target look "stuck" and can shadow whatever a fresh page-load run would
+// actually look like. Explicit, user-initiated only (the reset button in
+// ListView.js), same gating as every other mutating action in this file.
+
+// GSAP leaves are whatever this node's subtree bottoms out at (a plain tween
+// has no children, so it's its own only leaf) — mirrors forceTargetsVisible's
+// walk, but collects rather than acting inline, since clearProps needs every
+// leaf's targets gathered up front.
+function collectGsapLeaves(node, out = []) {
+  if (node.children?.length) {
+    for (const child of node.children) collectGsapLeaves(child, out);
+  } else {
+    out.push(node);
+  }
+  return out;
+}
+
+// Killing a timeline kills its whole nested subtree too, but clearProps
+// still has to run per leaf: only leaf tweens carry real `targets` (see
+// detect.js's describe()), and clearProps needs GSAP's own property-name
+// resolution (autoAlpha -> opacity+visibility, xPercent -> transform, etc.)
+// to remove exactly what a tween wrote, not a raw style property guess.
+export function resetNode(node) {
+  if (isCssNode(node)) {
+    for (const leaf of cssLeaves(node)) {
+      const live = leaf.ref;
+      const built = peekReconstructedCss(leaf);
+      for (const inst of [live, built]) {
+        try {
+          inst?.cancel();
+        } catch {}
+      }
+      forgetCssReconstruction(leaf);
+    }
+    return;
+  }
+  const live = node.ref;
+  const built = peekReconstructed(node);
+  for (const inst of [live, built]) {
+    try {
+      inst?.kill();
+    } catch {}
+  }
+  forgetReconstruction(node);
+  for (const leaf of collectGsapLeaves(node)) {
+    if (leaf.targets?.length) {
+      try {
+        gsap.set(leaf.targets, { clearProps: 'all' });
+      } catch {}
+    }
+  }
 }

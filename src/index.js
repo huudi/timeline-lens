@@ -30,7 +30,7 @@ import { mountHighlight } from './highlight.js';
 import { scanExisting } from './detect.js';
 import { scanCssAnimations } from './detect-css.js';
 import { entries, selectedId, panelOpen, miniOpen, uiRevealed, tick, loopIds } from './store.js';
-import { isFinished, restart } from './playback.js';
+import { isFinished, restart, restoreForcedVisibility } from './playback.js';
 
 let mounted = false;
 // Cleanup handles for the currently active mount, so destroy() can undo
@@ -228,6 +228,11 @@ export function destroy() {
 
   host?.remove();
   host = null;
+
+  // Undo every display:none-style override a replay forced open this
+  // session (see playback.js) — destroy() should leave the host page
+  // exactly as it found it, not just remove the studio's own UI.
+  restoreForcedVisibility();
 
   // Reset detection state so a later init() starts from a clean scan
   // instead of showing stale entries from the previous mount.

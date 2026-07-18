@@ -9,9 +9,41 @@
 // panel can be minimized to a thin rail.
 
 import { html } from 'htm/preact';
-import { entries, selectedId, hoveredId, query, listCollapsed, expandedNodeIds, toggleNodeCollapsed, engineFilter } from '../store.js';
+import { useState } from 'preact/hooks';
+import {
+  entries,
+  selectedId,
+  hoveredId,
+  query,
+  listCollapsed,
+  expandedNodeIds,
+  toggleNodeCollapsed,
+  engineFilter,
+  listWidth,
+  setListWidth,
+} from '../store.js';
 import { showHighlight, clearHighlight } from '../highlight.js';
+import { resetNode } from '../playback.js';
 import { fmt, fmtTime, engineChip, flattenNode, flattenVisible, matchesQuery, matchesEngineFilter, availableEngineFilters } from './util.js';
+
+const RESET_SPIN_MS = 500;
+
+function ListResizeHandle() {
+  const onPointerDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const start = e.clientX;
+    const startWidth = listWidth.value;
+    const move = (ev) => setListWidth(startWidth + (ev.clientX - start));
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+  return html`<div class="gts-list-resize" onPointerDown=${onPointerDown}></div>`;
+}
 
 function allTargets(node) {
   if (node.type === 'tween') return node.targets;
@@ -24,6 +56,7 @@ function ListRow({ node, depth }) {
   const targetCount = allTargets(node).length;
   const hasChildren = (node.children || []).length > 0;
   const collapsed = !expandedNodeIds.value.has(node.id);
+  const [spinning, setSpinning] = useState(false);
   return html`
     <div
       class="gts-list-row ${selected ? 'on' : ''} ${hovered ? 'hover' : ''}"
@@ -73,6 +106,18 @@ function ListRow({ node, depth }) {
                 : ''}${node.yoyo ? ' · yoyo' : ''}${node.delay ? ` · delay ${fmt(node.delay)}` : ''}
           </span>
         </div>
+        <button
+          class="gts-list-reset ${spinning ? 'spin' : ''}"
+          title="Reset — clears inline styles this animation left on its target(s) and stops it"
+          onClick=${(e) => {
+            e.stopPropagation();
+            resetNode(node);
+            setSpinning(true);
+            setTimeout(() => setSpinning(false), RESET_SPIN_MS);
+          }}
+        >
+          ↻
+        </button>
       </div>
     </div>
   `;
@@ -96,7 +141,8 @@ function ExpandedList() {
     : list.flatMap((entry) => flattenVisible(entry, 0, expandedNodeIds.value, []));
 
   return html`
-    <div class="gts-list">
+    <div class="gts-list" style="width:${listWidth.value}px">
+      <${ListResizeHandle} />
       <div class="gts-list-head">
         <select
           class="gts-list-engine-filter"

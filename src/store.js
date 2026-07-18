@@ -49,15 +49,17 @@ export function setPanelHeight(v) {
   panelHeight.value = Math.round(Math.max(PANEL_MIN_HEIGHT, Math.min(max, v)));
 }
 
-// side-panel widths (Properties/Code), independently resizable and
+// side-panel widths (Properties/Code/List), independently resizable and
 // persisted the same way as panelHeight above
 export const PROPS_MIN_WIDTH = 200;
 export const CODE_MIN_WIDTH = 240;
+export const LIST_MIN_WIDTH = 130;
 export const propsWidth = signal(persisted.propsWidth ?? 260);
 export const codeWidth = signal(persisted.codeWidth ?? 340);
+export const listWidth = signal(persisted.listWidth ?? 240);
 
-function widthMax() {
-  return typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.6) : 900;
+function widthMax(fraction = 0.6) {
+  return typeof window !== 'undefined' ? Math.round(window.innerWidth * fraction) : 900;
 }
 
 export function setPropsWidth(v) {
@@ -66,6 +68,13 @@ export function setPropsWidth(v) {
 
 export function setCodeWidth(v) {
   codeWidth.value = Math.round(Math.max(CODE_MIN_WIDTH, Math.min(widthMax(), v)));
+}
+
+// Same 40vw ceiling the list column has always had (see styles.js's
+// .gts-list), just enforced here now that the width is signal-driven instead
+// of a fixed CSS value.
+export function setListWidth(v) {
+  listWidth.value = Math.round(Math.max(LIST_MIN_WIDTH, Math.min(widthMax(0.4), v)));
 }
 
 // Persisted sizes can come from a bigger window (or the window can shrink
@@ -77,6 +86,7 @@ if (typeof window !== 'undefined') {
     setPanelHeight(panelHeight.value);
     setPropsWidth(propsWidth.value);
     setCodeWidth(codeWidth.value);
+    setListWidth(listWidth.value);
   };
   clampToViewport();
   window.addEventListener('resize', clampToViewport);
@@ -131,6 +141,7 @@ if (typeof localStorage !== 'undefined') {
       panelHeight: panelHeight.value,
       propsWidth: propsWidth.value,
       codeWidth: codeWidth.value,
+      listWidth: listWidth.value,
       listCollapsed: listCollapsed.value,
       propertiesOpen: propertiesOpen.value,
       codeOpen: codeOpen.value,

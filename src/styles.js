@@ -167,6 +167,7 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-right: 10px;
   white-space: nowrap;
 }
 .gts-brand-mark {
@@ -180,12 +181,6 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   display: block;
   align-self: center;
 }
-.gts-brand-by {
-  color: var(--dim);
-  font-size: 9px;
-  text-decoration: none;
-}
-.gts-brand-by:hover { color: var(--text); text-decoration: underline; }
 .gts-beta {
   position: absolute;
   top: -7px;
@@ -315,9 +310,10 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
 .gts-section-body { display: contents; }
 .gts-section-head { display: none; }
 
-/* ---- list view ---- */
+/* ---- list view (width set inline from the listWidth signal, see
+   store.js/ListView.js) ---- */
 .gts-list {
-  width: 240px;
+  position: relative;
   flex: 0 1 auto;
   min-width: 130px;
   max-width: 40vw;
@@ -326,6 +322,16 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   display: flex;
   flex-direction: column;
 }
+.gts-list-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -4px;
+  width: 8px;
+  cursor: ew-resize;
+  z-index: 6;
+}
+.gts-list-resize:hover, .gts-list-resize:active { background: var(--accent-soft); }
 .gts-list-rail {
   width: 28px;
   min-width: 28px;
@@ -395,6 +401,36 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
 }
 .gts-list-caret.hide { visibility: hidden; }
 .gts-list-caret:hover { color: var(--text); background: var(--bg4); }
+/* reset button: strips whatever inline styles GSAP/WAAPI left on this row's
+   real target(s) and stops it outright (see playback.js's resetNode) — only
+   shown on row hover/focus so the row stays readable at rest, matching how
+   the track view only reveals its own per-row chrome on hover. */
+.gts-list-reset {
+  flex: none;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.gts-list-row:hover .gts-list-reset,
+.gts-list-row:focus-within .gts-list-reset,
+.gts-list-reset:focus-visible {
+  opacity: 1;
+}
+.gts-list-reset:hover { color: var(--text); background: var(--bg4); }
+.gts-list-reset.spin { animation: gts-list-reset-spin 0.5s ease; }
+@keyframes gts-list-reset-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .gts-list-name {
   min-width: 0;
   overflow: hidden;

@@ -63,9 +63,8 @@ function BrandLogo() {
   `;
 }
 
-// Brand block shared by the toolbar and mini player: the huudi wordmark,
-// a "by huudi" credit link sitting right next to it, and a small "Beta"
-// pill badged onto the logo's top-right corner.
+// Brand block shared by the toolbar and mini player: the huudi wordmark and
+// a small "Beta" pill badged onto the logo's top-right corner.
 function Brand() {
   return html`
     <div class="gts-brand">
@@ -73,7 +72,6 @@ function Brand() {
         <${BrandLogo} />
         <span class="gts-beta">Beta</span>
       </div>
-      <a class="gts-brand-by" href="https://huudi.co.uk" target="_blank" rel="noopener noreferrer">by huudi</a>
     </div>
   `;
 }
