@@ -1,6 +1,6 @@
 {
   "name": "timeline-lens",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Read-only, in-browser visual debugger for GSAP, Motion, CSS animations/transitions, and the Web Animations API. Not affiliated with GreenSock/GSAP or Motion. Mounts a dev-only panel that detects whichever of these engines a page is already using and shows them as scrubbable tracks — nothing is created, edited, or exported.",
   "license": "MIT",
   "type": "module",
