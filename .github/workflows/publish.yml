@@ -28,6 +28,6 @@ jobs:
           fi
 
       - name: Ensure npm CLI supports trusted publishing
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       - run: npm publish --provenance
