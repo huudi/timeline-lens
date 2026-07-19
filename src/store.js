@@ -54,9 +54,9 @@ export function setPanelHeight(v) {
 export const PROPS_MIN_WIDTH = 200;
 export const CODE_MIN_WIDTH = 240;
 export const LIST_MIN_WIDTH = 130;
-export const propsWidth = signal(persisted.propsWidth ?? 260);
-export const codeWidth = signal(persisted.codeWidth ?? 340);
-export const listWidth = signal(persisted.listWidth ?? 240);
+export const propsWidth = signal(persisted.propsWidth ?? 300);
+export const codeWidth = signal(persisted.codeWidth ?? 300);
+export const listWidth = signal(persisted.listWidth ?? 300);
 
 function widthMax(fraction = 0.6) {
   return typeof window !== 'undefined' ? Math.round(window.innerWidth * fraction) : 900;

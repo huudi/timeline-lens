@@ -59,6 +59,17 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   justify-content: center;
 }
 .gts-trigger svg { width: 22px; height: 22px; }
+
+/* Icon sizing — every button below renders a reicon.dev outline SVG (no
+   width/height attrs of its own, so without this it'd fall back to the
+   browser's 300x150 default). */
+.gts-tbtn svg { width: 14px; height: 14px; flex: none; }
+.gts-abtn svg { width: 13px; height: 13px; flex: none; }
+.gts-close svg { width: 14px; height: 14px; }
+.gts-list-caret svg { width: 14px; height: 14px; }
+.gts-list-reset svg { width: 13px; height: 13px; }
+.gts-list-collapse-btn svg { width: 13px; height: 13px; }
+.gts-code-chevron svg { width: 14px; height: 14px; }
 .gts-trigger:hover { transform: scale(1.06); }
 .gts-trigger.open { opacity: 0; pointer-events: none; }
 
@@ -189,18 +200,6 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   display: block;
   align-self: center;
 }
-.gts-beta {
-  position: absolute;
-  top: -7px;
-  right: -10px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--ink);
-  font: 700 6px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
 .gts-count {
   color: var(--dim);
   white-space: nowrap;
@@ -274,6 +273,9 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
 /* thin divider isolating the destructive close button from the toggles */
 .gts-vsep { width: 1px; height: 18px; background: var(--border); flex: none; }
 .gts-abtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 5px 13px;
   border-radius: 999px;
   background: var(--bg3);
@@ -285,8 +287,6 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
 .gts-abtn.on { background: transparent; border-color: var(--accent); color: var(--accent); }
 .gts-abtn:disabled { opacity: 0.4; cursor: not-allowed; }
 .gts-abtn:disabled:hover { background: var(--bg3); }
-.gts-abtn.gts-mini-btn { display: inline-flex; align-items: center; gap: 6px; }
-.gts-abtn.gts-mini-btn svg { width: 13px; height: 13px; flex: none; }
 .gts-close { color: var(--dim); font-size: 14px; padding: 4px 6px; }
 .gts-close:hover { color: var(--text); }
 /* corner close button only takes over on mobile (see the 640px media
@@ -888,6 +888,7 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   border: 0;
 }
 .gts-mini-scrub:disabled, .gts-transport-scrub:disabled { opacity: 0.4; cursor: not-allowed; }
+.gts-mini-scrub { margin-top: 8px; margin-bottom: 8px; }
 
 /* ---- hover-to-highlight overlay ----
    z-index sits below the panel/toolbar/mini player (5/10/8) so a target

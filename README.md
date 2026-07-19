@@ -2,6 +2,8 @@
 
 Your animations already exist: GSAP tweens, CSS keyframes, transitions, WAAPI calls. Timeline Lens just makes them visible, laid out as scrubbable tracks. It's a read-only, in-browser visual debugger, not an authoring tool: `console.log()` tells you a tween exists, Timeline Lens shows you where it starts, how long it runs, what it targets and how it eases, across GSAP, CSS and WAAPI alike, while the page keeps doing its thing.
 
+Visit [timelinelens.com](https://timelinelens.com) to test the package on a live site and for more information.
+
 Not affiliated with or built by GreenSock/GSAP.
 
 ## Features

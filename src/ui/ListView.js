@@ -24,7 +24,7 @@ import {
 } from '../store.js';
 import { showHighlight, clearHighlight } from '../highlight.js';
 import { resetNode } from '../playback.js';
-import { fmt, fmtTime, engineChip, flattenNode, flattenVisible, matchesQuery, matchesEngineFilter, availableEngineFilters } from './util.js';
+import { fmt, fmtTime, engineChip, flattenNode, flattenVisible, matchesQuery, matchesEngineFilter, availableEngineFilters, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, RepeatIcon } from './util.js';
 
 const RESET_SPIN_MS = 500;
 
@@ -35,11 +35,14 @@ function ListResizeHandle() {
     e.target.setPointerCapture?.(e.pointerId);
     const start = e.clientX;
     const startWidth = listWidth.value;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.cursor = 'ew-resize';
     const move = (ev) => {
       ev.preventDefault();
       setListWidth(startWidth + (ev.clientX - start));
     };
     const up = () => {
+      document.body.style.cursor = prevCursor;
       e.target.removeEventListener('pointermove', move);
       e.target.removeEventListener('pointerup', up);
       e.target.removeEventListener('pointercancel', up);
@@ -92,7 +95,7 @@ function ListRow({ node, depth }) {
             toggleNodeCollapsed(node.id);
           }}
         >
-          ${hasChildren ? (collapsed ? '▸' : '▾') : ''}
+          ${hasChildren ? (collapsed ? html`<${ChevronRightIcon} />` : html`<${ChevronDownIcon} />`) : ''}
         </button>
         <div class="gts-list-name-col">
           <span class="gts-list-name" title=${node.label}>
@@ -122,7 +125,7 @@ function ListRow({ node, depth }) {
             setTimeout(() => setSpinning(false), RESET_SPIN_MS);
           }}
         >
-          ↻
+          <${RepeatIcon} />
         </button>
       </div>
     </div>
@@ -158,7 +161,7 @@ function ExpandedList() {
         >
           ${filters.map((f) => html`<option value=${f.value}>${f.label}</option>`)}
         </select>
-        <button class="gts-list-collapse-btn" title="Minimize list" onClick=${() => (listCollapsed.value = true)}>«</button>
+        <button class="gts-list-collapse-btn" title="Minimize list" onClick=${() => (listCollapsed.value = true)}><${ChevronLeftIcon} /></button>
       </div>
       <div class="gts-list-head">
         <input
@@ -182,7 +185,7 @@ function ExpandedList() {
 export function ListView() {
   if (listCollapsed.value) {
     return html`<div class="gts-list gts-list-rail">
-      <button class="gts-list-collapse-btn" title="Expand list" onClick=${() => (listCollapsed.value = false)}>»</button>
+      <button class="gts-list-collapse-btn" title="Expand list" onClick=${() => (listCollapsed.value = false)}><${ChevronRightIcon} /></button>
     </div>`;
   }
   return html`<${ExpandedList} />`;

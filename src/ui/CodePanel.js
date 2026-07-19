@@ -17,7 +17,7 @@ import { findSource, findAnimateSource } from '../source.js';
 import { findKeyframesSource, findMatchedRuleSource } from '../css-source.js';
 import { findHtmlSource, openingTagSnippet } from '../html-source.js';
 import { callSiteFor } from '../motion-ref.js';
-import { HResizeHandle } from './util.js';
+import { HResizeHandle, ChevronRightIcon, ChevronDownIcon } from './util.js';
 
 function fileName(url) {
   try {
@@ -69,7 +69,7 @@ function CodeSection({ title, open, onToggle, info }) {
   return html`
     <div class="gts-code-section">
       <button class="gts-code-section-head" onClick=${onToggle}>
-        <span class="gts-code-chevron">${open ? '▾' : '▸'}</span>
+        <span class="gts-code-chevron">${open ? html`<${ChevronDownIcon} />` : html`<${ChevronRightIcon} />`}</span>
         <span class="gts-code-section-title">${title}</span>
         ${status ? html`<small>${status}</small>` : null}
       </button>
