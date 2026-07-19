@@ -1,16 +1,20 @@
 # Timeline Lens
 
-A read-only, in-browser visual debugger for animations. It detects animations already running on your page, GSAP tweens and timelines, CSS `@keyframes` animations, CSS transitions, JS `element.animate()` calls, and a best-effort attribution of `element.animate()` calls authored via the Motion library (motion.dev), and shows them as scrubbable tracks.
+Your animations already exist: GSAP tweens, CSS keyframes, transitions, WAAPI calls. Timeline Lens just makes them visible, laid out as scrubbable tracks. It's a read-only, in-browser visual debugger, not an authoring tool: `console.log()` tells you a tween exists, Timeline Lens shows you where it starts, how long it runs, what it targets and how it eases, across GSAP, CSS and WAAPI alike, while the page keeps doing its thing.
 
-Not affiliated with or built by GreenSock/GSAP or Motion.
+Not affiliated with or built by GreenSock/GSAP.
 
 ## Features
 
-- **Track view** - one row per detected animation, including indented nested timeline children. Scrub, play/pause, and adjust preview speed per animation, plus a "pause all" toggle.
-- **List/index view** - a flat, searchable/filterable list of everything detected, tagged with an engine chip (GSAP / CSS / WAAPI / MOTION). Selecting an entry scrolls to and highlights it in the track view.
-- **Properties panel** - duration, repeat/yoyo/delay/fill/easing, targets, labels, and (for GSAP) detected plugins and ScrollTrigger/matchMedia config; (for CSS/WAAPI/Motion) keyframes, pseudo-elements, and scroll-driven timeline details.
-- **Code panel** - a best-effort reconstruction of the animation's authored source. For GSAP, a static scan recovers the real authoring statement from your own same-origin scripts where possible, falling back to a synthesized snippet. For CSS, the authored `@keyframes` rule is recovered from your stylesheets. For Motion, a captured call-site gives an exact file:line even when the statement text itself can't be recovered. See [Where it looks for your code](#where-it-looks-for-your-code) for how the source scan works. Each section's snippet has a **Copy** button.
-- **Hover-to-highlight** - hovering an entry in either view draws an outline over the real DOM element(s) it targets.
+Four things, done properly:
+
+- **Detect** - walks `gsap.globalTimeline` and polls `document.getAnimations()` to catch every GSAP tween/timeline (including ScrollTrigger and `matchMedia()` setups), CSS `@keyframes` animation, CSS transition, and `element.animate()` call running on the page, including scroll-driven `view()` timelines and ones that already finished and got pruned.
+- **Scrub** - play, pause, reverse, change speed, or drag the playhead across real GSAP and native WAAPI instances alike, in a track view (nested timeline children indented) or a flat, searchable/filterable list tagged with an engine chip (GSAP / CSS / WAAPI). Nothing here is faked: you're driving the actual animations.
+- **Inspect** - a properties panel shows each animation's duration, repeat/yoyo/delay/fill/easing, targets, labels, and (for GSAP) detected plugins and ScrollTrigger/matchMedia config; plus a Code panel with a best-effort reconstruction of the call that created it. For GSAP, a static scan recovers the real authoring statement from your own same-origin scripts where possible, falling back to a synthesized snippet. For CSS, the authored `@keyframes` rule is recovered straight from your stylesheets. See [Where it looks for your code](#where-it-looks-for-your-code) for how the source scan works. Each section's snippet has a **Copy** button.
+- **Highlight** - hover any track and its real DOM target lights up on the page, so you always know exactly what's moving, whatever engine is driving it.
+
+Plus:
+
 - **Export** - downloads the currently detected animation tree as a JSON file (label, engine, duration, targets, params, no DOM/live-instance references), for filing a bug report or just keeping a record.
 - **Keyboard shortcuts** - `Space` plays/pauses the selected animation, `Esc` closes the panel/mini player, whichever is open. Scoped to while the studio itself is open, and ignored while typing in any input (the panel's own search box included), so they never hijack your page's own keystrokes.
 
@@ -18,19 +22,17 @@ Not affiliated with or built by GreenSock/GSAP or Motion.
 
 - **Nothing is authored here.** There's no canvas, no code generation, no export panel. If you didn't write the animation in your own code, it won't appear, and you can't create one from the panel either.
 - **Two detection engines feed one panel.** On mount, and continuously afterward, it walks `gsap.globalTimeline.getChildren(true, true, true)`, recursing into nested timelines, and separately polls `document.getAnimations()` for CSS animations, CSS transitions, and `element.animate()` calls. Every track you see is a live instance from one of those two sources, not a copy. Scrubbing it calls `.seek()`/`.progress()` (gsap) or sets `.currentTime` (Web Animations API) on the real animation.
-- **`gsap` and `motion` are not dependencies of this package.** If your project uses gsap and has it installed, the studio resolves it dynamically and detects it alongside CSS/WAAPI animations. For that detection to work at all, the package and your page have to share the exact same `gsap` module instance, which is why it's resolved live rather than bundled. Motion needs even less: the studio never imports it at all, attributing its calls by inspecting a live call-site stack trace instead (see [Motion support](#motion-support)). If your project uses neither (or only one), the studio still runs standalone against whatever it finds.
+- **`gsap` is not a dependency of this package.** If your project uses gsap and has it installed, the studio resolves it dynamically and detects it alongside CSS/WAAPI animations, so it still runs fine on CSS and WAAPI alone when GSAP isn't installed. For GSAP detection to work at all, the package and your page have to share the exact same `gsap` module instance, which is why it's resolved live rather than bundled (see [GSAP support](#gsap-support)).
 - **Completed animations are reconstructed, not real.** GSAP prunes finished, non-repeating tweens from `globalTimeline`, and the Web Animations API drops finished, non-`fill:forwards` animations from `document.getAnimations()` the same way. The studio snapshots each animation's data the moment it's first seen, so you can still scrub something that already finished, but scrubbing it plays a labeled **reconstruction** built from that snapshot, since the original instance no longer exists.
 - **`gsap.matchMedia()` needs no special handling.** Responsive animations set up with `matchMedia()` are already real `gsap.timeline()`/tween instances that GSAP itself creates and reverts as breakpoints are crossed, and `@media`-scoped CSS animations are applied and removed by the browser itself the same way. The studio just re-runs its detection walk on resize, so the panel always reflects whichever breakpoint is currently active in your actual browser width. No simulated breakpoints, no iframe.
 
 
 ## Install
 
-Install it as a **devDependency**. It must stay a devDependency, never a regular `dependency`, since it's a dev-only tool that should never ship to production (see [Keeping it dev-only](#keeping-it-dev-only) below).
-
-From npm:
+Install `timeline-lens` as a **devDependency**. It detects GSAP, CSS animations/transitions, and `element.animate()`/WAAPI calls already in your project out of the box, no configuration needed. It must stay a devDependency, never a regular `dependency`, since it's a dev-only tool that should never ship to production (see [Keeping it dev-only](#keeping-it-dev-only) below).
 
 ```
-npm install -D timeline-lens
+npm install --save-dev timeline-lens
 ```
 
 Or straight from GitHub, using npm's git-subdirectory syntax (requires npm ≥ 7), if you'd rather track a branch or commit directly:
@@ -47,7 +49,7 @@ Then install:
 npm install
 ```
 
-That's the whole install. There's no config file to create and nothing to point at your source. See [Usage](#usage) for wiring it up, and [GSAP support](#gsap-support) / [Motion support](#motion-support) below if you use either of those libraries.
+That's the whole install. There's no config file to create and nothing to point at your source - see [Usage](#usage) below to guard it and open it, and [GSAP support](#gsap-support) if you use GSAP.
 
 ## Usage
 
@@ -83,7 +85,7 @@ import('timeline-lens').then((m) => {
 
 ## GSAP support
 
-`gsap` is **not a dependency of timeline-lens**, If you use GSAP, install it the normal way in your own project (as a regular `dependency`, not a devDependency, since GSAP itself does ship to production):
+`gsap` is **not a dependency of timeline-lens**. If you use GSAP, install it the normal way in your own project (as a regular `dependency`, not a devDependency, since GSAP itself does ship to production):
 
 ```
 npm install gsap
@@ -92,16 +94,6 @@ npm install gsap
 There's nothing to configure beyond that. On mount, the studio resolves `gsap` itself via a dynamic `import('gsap')` that's allowed to fail. When it succeeds, GSAP detection (`gsap.globalTimeline`) turns on automatically. When it fails, it falls back to `window.gsap` if that's set (see below). If neither is available, the studio silently runs on CSS/WAAPI detection alone. This dynamic-import approach, rather than a bundled or peer-declared copy, is what guarantees the studio shares the *exact same* `gsap` module instance as your page, which is required for `gsap.globalTimeline` inspection to work at all.
 
 **Loading GSAP from a CDN `<script>` tag instead of npm?** No extra setup needed there either, you don't need to manually expose `window.gsap` yourself. A CDN `<script>` tag already puts GSAP on `window.gsap` as part of loading it, and the studio's `import('gsap')` fails on a page with no npm-installed `gsap` package, so it falls back to reading `window.gsap` automatically. The one thing that must be true either way: it has to be the *same* `gsap` your page's own animations were created with, which a single CDN global always is.
-
-## Motion support
-
-Likewise, `motion` (motion.dev) is not a dependency of timeline-lens and needs no setup on the studio's side. Install and use it in your own project exactly as you normally would:
-
-```
-npm install motion
-```
-
-The studio never imports Motion itself. It can't, since Motion's WAAPI calls are plain, unmarked `element.animate()` calls indistinguishable from hand-written ones at the data level. Instead it wraps `Element.prototype.animate` once (a behavior-neutral passthrough) and attributes each call to Motion by inspecting its real call-site stack trace. This works automatically once Motion is installed and used, no import, no config, with one caveat worth knowing: attribution depends on your bundler's dev server putting "motion" somewhere in the serving script's own URL. Vite's dev pre-bundling does this, so Motion calls made after mount are correctly labeled. Some other dev servers (e.g. Next's default webpack setup) don't, so those calls still show up and are fully scrubbable, just tagged the generic `WAAPI` instead of `MOTION`. Either way, nothing needs to be installed or configured differently to get this working, it's automatic on whichever bundler you use.
 
 ## Where it looks for your code
 
@@ -171,7 +163,7 @@ Also delete the `import('timeline-lens')` guard block from your entry point, uni
 
 ## Browser extension
 
-Brower extension for chrome and firefox coming very soon! Watch this space.
+Same detection engines as this npm package (GSAP, CSS animations, transitions, `element.animate()` and WAAPI), on any page, whether or not it exposes `window.gsap`, no install into your project required. Click the extension icon to mount the panel, click again to toggle it away. Currently in testing ahead of launch for Chrome and Firefox, watch this space.
 
 ## License
 
