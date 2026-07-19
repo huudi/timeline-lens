@@ -11,7 +11,10 @@ export function HResizeHandle({ onDrag }) {
     e.preventDefault();
     e.target.setPointerCapture?.(e.pointerId);
     const start = e.clientX;
-    const move = (ev) => onDrag(start - ev.clientX);
+    const move = (ev) => {
+      ev.preventDefault();
+      onDrag(start - ev.clientX);
+    };
     const up = () => {
       e.target.removeEventListener('pointermove', move);
       e.target.removeEventListener('pointerup', up);

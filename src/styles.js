@@ -88,6 +88,9 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   cursor: ns-resize;
   z-index: 6;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .gts-panel-resize:hover, .gts-panel-resize:active { background: var(--accent-soft); }
 
@@ -101,6 +104,9 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   cursor: ew-resize;
   z-index: 6;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .gts-panel-resize-h:hover, .gts-panel-resize-h:active { background: var(--accent-soft); }
 
@@ -336,8 +342,23 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   cursor: ew-resize;
   z-index: 6;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .gts-list-resize:hover, .gts-list-resize:active { background: var(--accent-soft); }
+
+/* ---- resize handles on touch: 8px is a fine hover target for a mouse but
+   far too thin to reliably grab with a finger, so widen the draggable strip
+   to a proper touch target (position offsets adjusted to keep each one
+   centred on the same visual border). Keyed off pointer capability rather
+   than viewport width, since tablets can be touch input at desktop-ish
+   widths, mouse stays the thin 8px target regardless of viewport. ---- */
+@media (pointer: coarse) {
+  .gts-panel-resize { top: -25px; height: 50px; }
+  .gts-panel-resize-h { left: -25px; width: 50px; }
+  .gts-list-resize { right: -25px; width: 50px; }
+}
 .gts-list-rail {
   width: 28px;
   min-width: 28px;
@@ -951,7 +972,8 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   /* ---- bigger tap targets across the toolbar/mini player: the desktop
      sizes (26px transport buttons, tight pill padding) are well under the
      ~40-44px touch target guidelines, so bump them up on touch-sized
-     viewports. Resize handles get the same treatment further down. ---- */
+     viewports. Resize handles get the same treatment via their own
+     (pointer: coarse) query, see the .gts-panel-resize rules above. ---- */
   .gts-tbtn { width: 38px; height: 38px; font-size: 13px; }
   .gts-cluster { padding: 3px; }
   .gts-cluster .gts-tbtn { width: 38px; height: 34px; }
@@ -994,14 +1016,6 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   }
 
   .gts-field > label { width: 72px; }
-
-  /* ---- resize handles: 8px is a fine hover target for a mouse but too
-     thin to reliably grab with a finger, so widen the draggable strip
-     (position offsets adjusted to keep it centred on the same visual
-     border) on touch-sized viewports. ---- */
-  .gts-panel-resize { top: -8px; height: 16px; }
-  .gts-panel-resize-h { left: -8px; width: 16px; }
-  .gts-list-resize { right: -8px; width: 16px; }
 
   /* ---- mini player: 90% width on small viewports; the brand/actions vs.
      body split is handled by the container query above (it tracks the

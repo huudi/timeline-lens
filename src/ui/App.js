@@ -81,7 +81,10 @@ function ResizeHandle({ onDrag }) {
     e.preventDefault();
     e.target.setPointerCapture?.(e.pointerId);
     const start = e.clientY;
-    const move = (ev) => onDrag(ev.clientY - start);
+    const move = (ev) => {
+      ev.preventDefault();
+      onDrag(ev.clientY - start);
+    };
     const up = () => {
       e.target.removeEventListener('pointermove', move);
       e.target.removeEventListener('pointerup', up);

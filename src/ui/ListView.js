@@ -35,7 +35,10 @@ function ListResizeHandle() {
     e.target.setPointerCapture?.(e.pointerId);
     const start = e.clientX;
     const startWidth = listWidth.value;
-    const move = (ev) => setListWidth(startWidth + (ev.clientX - start));
+    const move = (ev) => {
+      ev.preventDefault();
+      setListWidth(startWidth + (ev.clientX - start));
+    };
     const up = () => {
       e.target.removeEventListener('pointermove', move);
       e.target.removeEventListener('pointerup', up);
