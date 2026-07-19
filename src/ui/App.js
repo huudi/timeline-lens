@@ -350,9 +350,12 @@ function Toolbar() {
             </svg>
             <span class="gts-coffee-text">Buy me a coffee</span>
           </a>
-          <span class="gts-vsep" aria-hidden="true"></span>
-          <button class="gts-close" title="Close" onClick=${() => (panelOpen.value = false)}>✕</button>
+          <span class="gts-close-inline">
+            <span class="gts-vsep" aria-hidden="true"></span>
+            <button class="gts-close" title="Close" onClick=${() => (panelOpen.value = false)}>✕</button>
+          </span>
         </div>
+        <button class="gts-close gts-close-corner" title="Close" onClick=${() => (panelOpen.value = false)}>✕</button>
       </div>
     </div>
   `;

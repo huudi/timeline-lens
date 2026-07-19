@@ -87,6 +87,7 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   height: 8px;
   cursor: ns-resize;
   z-index: 6;
+  touch-action: none;
 }
 .gts-panel-resize:hover, .gts-panel-resize:active { background: var(--accent-soft); }
 
@@ -99,6 +100,7 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   width: 8px;
   cursor: ew-resize;
   z-index: 6;
+  touch-action: none;
 }
 .gts-panel-resize-h:hover, .gts-panel-resize-h:active { background: var(--accent-soft); }
 
@@ -281,6 +283,9 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
 .gts-abtn.gts-mini-btn svg { width: 13px; height: 13px; flex: none; }
 .gts-close { color: var(--dim); font-size: 14px; padding: 4px 6px; }
 .gts-close:hover { color: var(--text); }
+/* corner close button only takes over on mobile (see the 640px media
+   query below) — desktop keeps the close button inline in .gts-actions */
+.gts-close-corner { display: none; }
 .gts-coffee {
   display: inline-flex;
   align-items: center;
@@ -330,6 +335,7 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
   width: 8px;
   cursor: ew-resize;
   z-index: 6;
+  touch-action: none;
 }
 .gts-list-resize:hover, .gts-list-resize:active { background: var(--accent-soft); }
 .gts-list-rail {
@@ -862,12 +868,16 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
 }
 .gts-mini-scrub:disabled, .gts-transport-scrub:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* ---- hover-to-highlight overlay ---- */
+/* ---- hover-to-highlight overlay ----
+   z-index sits below the panel/toolbar/mini player (5/10/8) so a target
+   that's actually covered by the studio's own UI never draws its highlight
+   box on top of it — the opaque panel background hides the overlapping
+   part instead. */
 .gts-highlight-box {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 20;
+  z-index: 4;
   pointer-events: none;
   border: 1.5px solid var(--accent);
   background: var(--accent-soft);
@@ -888,7 +898,67 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
 @media (max-width: 640px) {
   .gts-abtn-text { display: none; }
   .gts-coffee { display: none; }
-  .gts-toolbar { padding: 6px 10px; gap: 6px 8px; }
+  .gts-toolbar { padding: 12px; gap: 8px 8px; }
+
+  /* ---- close button moves out of the actions row and sits alongside
+     the brand on its own top row instead: on narrow layouts the actions
+     row wraps onto its own line below the brand, and dragging the close
+     button through that wrap made it land in an unpredictable spot.
+     Keeping it with the brand frees the actions row to lay out as a
+     clean full-width grid. ---- */
+  .gts-close-inline { display: none; }
+  .gts-close-corner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    grid-area: close;
+  }
+  .gts-toolbar-top {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "brand close" "actions actions" "transport transport";
+  }
+  /* one row of icon-only buttons — text dropped above since four labeled
+     pills don't fit a phone-width row */
+  .gts-actions {
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+  }
+  .gts-actions .gts-abtn,
+  .gts-actions .gts-mini-btn {
+    flex: 1 1 0;
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .gts-toolbar-transport { width: 100%; margin-top: 16px; }
+
+  /* transport reflows into two lines: scrub + time readout on the first,
+     playback controls + speed + animation name on the second. Order is
+     reassigned rather than reordering the markup since the same
+     component also renders the desktop single-line transport. Widths on
+     the scrub/label are set so each line's two flexible items divide up
+     the exact remaining space, which is what forces the wrap between
+     them instead of the browser packing a third item onto the line. */
+  .gts-transport { width: 100%; row-gap: 16px; }
+  .gts-transport-scrub { order: 1; flex: 1 1 auto; min-width: 0; }
+  .gts-time { order: 2; flex: 0 0 auto; }
+  .gts-transport .gts-cluster { order: 3; }
+  .gts-speed { order: 4; }
+  .gts-transport-label { order: 5; flex: 1 1 auto; min-width: 0; max-width: none; text-align: right; }
+
+  /* ---- bigger tap targets across the toolbar/mini player: the desktop
+     sizes (26px transport buttons, tight pill padding) are well under the
+     ~40-44px touch target guidelines, so bump them up on touch-sized
+     viewports. Resize handles get the same treatment further down. ---- */
+  .gts-tbtn { width: 38px; height: 38px; font-size: 13px; }
+  .gts-cluster { padding: 3px; }
+  .gts-cluster .gts-tbtn { width: 38px; height: 34px; }
+  .gts-abtn { padding: 9px 14px; }
+  .gts-close { padding: 9px 10px; font-size: 16px; }
+  .gts-speed { min-height: 34px; padding: 3px 6px; }
+  .gts-list-collapse-btn, .gts-markers-toggle { min-width: 30px; min-height: 30px; }
 
   /* ---- gts-body: stack panels vertically, each full width, collapsible,
      independently scrollable instead of a cramped side-by-side layout ---- */
@@ -925,9 +995,31 @@ button:focus-visible, a:focus-visible { outline: 1px solid var(--accent); outlin
 
   .gts-field > label { width: 72px; }
 
-  /* ---- mini player: 90% width on small viewports; the body/controls
-     layout itself is handled by the container query above, since it
-     tracks the mini player's own (fixed) width, not the viewport ---- */
+  /* ---- resize handles: 8px is a fine hover target for a mouse but too
+     thin to reliably grab with a finger, so widen the draggable strip
+     (position offsets adjusted to keep it centred on the same visual
+     border) on touch-sized viewports. ---- */
+  .gts-panel-resize { top: -8px; height: 16px; }
+  .gts-panel-resize-h { left: -8px; width: 16px; }
+  .gts-list-resize { right: -8px; width: 16px; }
+
+  /* ---- mini player: 90% width on small viewports; the brand/actions vs.
+     body split is handled by the container query above (it tracks the
+     mini player's own fixed width, not the viewport), but at this width
+     the body's select + transport controls no longer fit on one row
+     either — .gts-mini-body/.gts-mini-controls below break the transport
+     into its own wrapped 2-line block (select on top, cluster/time/speed
+     on one line, the scrub bar full-width on the next) instead of
+     squeezing everything onto a single cramped row. ---- */
   .gts-mini { left: 50%; width: 90%; max-width: 90vw; padding: 10px 12px; }
+  .gts-mini-body { flex-wrap: wrap; row-gap: 6px; }
+  .gts-mini-select { flex: 1 1 100%; max-width: none; height: 34px; }
+  .gts-mini-controls { flex: 1 1 100%; flex-wrap: wrap; row-gap: 6px; justify-content: space-between; }
+  .gts-mini-controls .gts-cluster { order: 1; }
+  .gts-mini-controls .gts-time { order: 2; }
+  .gts-mini-controls .gts-speed { order: 3; }
+  .gts-mini-controls .gts-mini-scrub { order: 4; flex: 1 1 100%; width: auto; }
+  .gts-mini-controls .gts-cluster .gts-tbtn { width: 34px; height: 30px; }
+  .gts-mini-actions .gts-tbtn { width: 34px; height: 34px; }
 }
 `;
