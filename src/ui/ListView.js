@@ -32,15 +32,18 @@ function ListResizeHandle() {
   const onPointerDown = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    e.target.setPointerCapture?.(e.pointerId);
     const start = e.clientX;
     const startWidth = listWidth.value;
     const move = (ev) => setListWidth(startWidth + (ev.clientX - start));
     const up = () => {
-      document.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerup', up);
+      e.target.removeEventListener('pointermove', move);
+      e.target.removeEventListener('pointerup', up);
+      e.target.removeEventListener('pointercancel', up);
     };
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerup', up);
+    e.target.addEventListener('pointermove', move);
+    e.target.addEventListener('pointerup', up);
+    e.target.addEventListener('pointercancel', up);
   };
   return html`<div class="gts-list-resize" onPointerDown=${onPointerDown}></div>`;
 }
