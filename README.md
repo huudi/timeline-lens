@@ -165,11 +165,13 @@ Also delete the `import('timeline-lens')` guard block from your entry point, uni
 
 ## Browser extension
 
-Same detection engines as this npm package (GSAP, CSS animations, transitions, `element.animate()` and WAAPI), on any page, whether or not it exposes `window.gsap`, no install into your project required. Click the extension icon to mount the panel, click again to toggle it away. Currently in testing ahead of launch for Chrome and Firefox, watch this space.
+Same detection engines as this npm package (GSAP, CSS animations, transitions, `element.animate()` and WAAPI), on any page, whether or not it exposes `window.gsap`, no install into your project required. Click the extension icon to mount the panel, click again to toggle it away. Now available on the Chrome Web Store; Firefox support is still in testing, watch this space.
+
+[![Available in the Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Download-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/timeline-lens/eglipendlnnbdpkbcfnakjncglbeckbp?hl=en-GB&utm_source=ext_sidebar)
 
 ## License
 
-[MIT](./LICENSE)
+[View license](./LICENSE)
 
 ## Support
 
